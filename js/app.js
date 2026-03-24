@@ -1,81 +1,262 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
-import { STLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/loaders/STLLoader.js';
-import { MODEL_SET_ORDER, MODEL_SETS } from './config.js';
+import { MODEL_LIBRARY, MODEL_VARIANTS } from '../../models.js';
+import { state } from './state.js';
+import { setupScene, setupRenderer, setupControls, setupTransformControls, onWindowResize } from './scene.js';
+import { applyMaterialPreset, applyModelDefaults, loadModel, resetModelTransform, setViewPreset } from './model.js';
+import {
+    clearActiveButtons,
+    hideError,
+    markActiveMaterialPreset,
+    setInfoStatus,
+    setupErrorActions,
+    setupInfoPanelActions,
+    setupVariantSelector,
+    showLoading,
+    updateInfoPanel
+} from './ui.js';
 
-const list = document.getElementById('model-list');
+const DEFAULT_MODEL_SET = MODEL_LIBRARY[0].modelSet;
 
-MODEL_SET_ORDER.forEach((setName) => {
-  const set = MODEL_SETS[setName];
-  const files = Object.values(set.variants);
+init();
 
-  const card = document.createElement('div');
-  card.className = 'model-item';
+function init() {
+    const route = getRouteState();
 
-  card.innerHTML = `
-    <div class="preview-container"><canvas width="240" height="180"></canvas></div>
-    <div class="item-content">
-      <p>${setName}</p>
-      <div class="item-actions">
-        <button data-action="view">View Model</button>
-        <button data-action="download">Download STL</button>
-      </div>
-    </div>
-  `;
+    state.currentModelSet = route.modelSet;
+    state.currentVariant = route.variant;
+    state.currentModelUrl = route.modelUrl;
 
-  const canvas = card.querySelector('canvas');
-  loadPreview(canvas, set.preview);
+    applyModelDefaults(state.currentModelSet);
 
-  card.querySelector('[data-action="view"]').addEventListener('click', () => {
-    const model = encodeURIComponent(set.variants.Default || files[0]);
-    const modelSet = encodeURIComponent(setName);
-    window.location.href = `viewer.html?model=${model}&modelSet=${modelSet}`;
-  });
+    setupScene();
+    setupRenderer();
+    setupControls();
+    setupTransformControls();
+    setupTransformPanel();
+    setupViewPresetPanel();
+    setupMaterialPanel();
+    setupVariantSelector(MODEL_VARIANTS, handleVariantChange);
+    setupErrorActions((url) => loadModel(url, showLoading));
+    setupInfoPanelActions(downloadCurrentModel, copyCurrentLink);
+    updateInfoPanel();
 
-  card.querySelector('[data-action="download"]').addEventListener('click', () => {
-    downloadFiles(files);
-  });
+    loadModel(route.modelUrl, showLoading);
 
-  list.appendChild(card);
-});
-
-function loadPreview(canvas, modelUrl) {
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000);
-  camera.position.z = 1.5;
-
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setSize(canvas.width, canvas.height, false);
-
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(1, 1, 1);
-  scene.add(light);
-
-  const loader = new STLLoader();
-  loader.load(modelUrl, (geometry) => {
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: 0x5e5e5e }));
-    mesh.scale.set(0.05, 0.05, 0.05);
-    scene.add(mesh);
-
-    const animate = () => {
-      requestAnimationFrame(animate);
-      mesh.rotation.x += 0.01;
-      mesh.rotation.y += 0.01;
-      renderer.render(scene, camera);
-    };
-    animate();
-  });
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('keydown', onKeyDown);
 }
 
-async function downloadFiles(urls) {
-  const zip = new JSZip();
-  const folder = zip.folder('models');
+function getRouteState() {
+    const params = new URLSearchParams(window.location.search);
+    const requestedModelSet = decodeURIComponent(params.get('modelSet') || DEFAULT_MODEL_SET);
 
-  for (const url of urls) {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    folder.file(url.split('/').pop(), blob);
-  }
+    if (!MODEL_VARIANTS[requestedModelSet]) {
+        const fallbackSet = DEFAULT_MODEL_SET;
+        const fallbackVariant = Object.keys(MODEL_VARIANTS[fallbackSet])[0];
 
-  const content = await zip.generateAsync({ type: 'blob' });
-  saveAs(content, 'models.zip');
+        return {
+            modelSet: fallbackSet,
+            variant: fallbackVariant,
+            modelUrl: MODEL_VARIANTS[fallbackSet][fallbackVariant]
+        };
+    }
+
+    const variants = Object.keys(MODEL_VARIANTS[requestedModelSet]);
+    const requestedVariant = decodeURIComponent(params.get('variant') || variants[0]);
+    const safeVariant = variants.includes(requestedVariant) ? requestedVariant : variants[0];
+
+    const requestedModel = params.get('model');
+    const safeModelUrl = requestedModel
+        ? decodeURIComponent(requestedModel)
+        : MODEL_VARIANTS[requestedModelSet][safeVariant];
+
+    return {
+        modelSet: requestedModelSet,
+        variant: safeVariant,
+        modelUrl: safeModelUrl
+    };
+}
+
+function handleVariantChange(variantName) {
+    state.currentVariant = variantName;
+    const modelUrl = MODEL_VARIANTS[state.currentModelSet][state.currentVariant];
+    state.currentModelUrl = modelUrl;
+
+    applyModelDefaults(state.currentModelSet);
+    updateInfoPanel();
+    loadModel(modelUrl, showLoading);
+    updateViewerUrl();
+}
+
+function setupTransformPanel() {
+    document.getElementById('btn-recenter').addEventListener('click', () => {
+        clearActiveButtons();
+        state.activeTransformMode = null;
+
+        if (state.transformControls) {
+            state.transformControls.enabled = false;
+            state.transformControls.visible = false;
+            state.transformControls.detach();
+        }
+
+        if (state.mesh) {
+            resetModelTransform(state.mesh);
+            applyMaterialPreset(state.currentMaterialPreset);
+            setViewPreset(state.currentViewPreset);
+        }
+    });
+
+    document.getElementById('btn-rotate').addEventListener('click', () => {
+        activateTransformMode('rotate', document.getElementById('btn-rotate'));
+    });
+
+    document.getElementById('btn-move').addEventListener('click', () => {
+        activateTransformMode('translate', document.getElementById('btn-move'));
+    });
+
+    document.getElementById('btn-scale').addEventListener('click', () => {
+        activateTransformMode('scale', document.getElementById('btn-scale'));
+    });
+}
+
+function setupViewPresetPanel() {
+    document.getElementById('btn-view-front').addEventListener('click', () => setViewPreset('front'));
+    document.getElementById('btn-view-top').addEventListener('click', () => setViewPreset('top'));
+    document.getElementById('btn-view-left').addEventListener('click', () => setViewPreset('left'));
+    document.getElementById('btn-view-iso').addEventListener('click', () => setViewPreset('iso'));
+}
+
+function setupMaterialPanel() {
+    document.getElementById('btn-material-matte').addEventListener('click', () => setMaterialPreset('matte'));
+    document.getElementById('btn-material-plastic').addEventListener('click', () => setMaterialPreset('plastic'));
+    document.getElementById('btn-material-metal').addEventListener('click', () => setMaterialPreset('metal'));
+    document.getElementById('btn-material-wireframe').addEventListener('click', () => setMaterialPreset('wireframe'));
+}
+
+function activateTransformMode(mode, buttonEl) {
+    if (!state.mesh || !state.transformControls) return;
+
+    clearActiveButtons();
+    buttonEl.classList.add('panel-btn--active');
+    state.activeTransformMode = mode;
+
+    state.transformControls.attach(state.mesh);
+    state.transformControls.setMode(mode);
+    state.transformControls.enabled = true;
+    state.transformControls.visible = true;
+    state.transformControls.showX = true;
+    state.transformControls.showY = true;
+    state.transformControls.showZ = true;
+}
+
+function setMaterialPreset(presetName) {
+    state.currentMaterialPreset = presetName;
+    applyMaterialPreset(presetName);
+    markActiveMaterialPreset(presetName);
+    updateInfoPanel();
+    setInfoStatus(`Material set to ${presetName.charAt(0).toUpperCase() + presetName.slice(1)}.`);
+}
+
+function updateViewerUrl() {
+    const modelUrl = MODEL_VARIANTS[state.currentModelSet][state.currentVariant];
+    const params = new URLSearchParams(window.location.search);
+
+    params.set('modelSet', state.currentModelSet);
+    params.set('variant', state.currentVariant);
+    params.set('model', modelUrl);
+
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+}
+
+async function downloadCurrentModel() {
+    if (!state.currentModelUrl) return;
+
+    try {
+        setInfoStatus('Downloading current file...');
+
+        const response = await fetch(state.currentModelUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${state.currentModelUrl}`);
+        }
+
+        const blob = await response.blob();
+        const fileName = state.currentModelUrl.split('/').pop() || 'model.stl';
+        const objectUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(objectUrl);
+        setInfoStatus('Download started.');
+    } catch (error) {
+        console.error(error);
+        setInfoStatus('Download failed.');
+    }
+}
+
+async function copyCurrentLink() {
+    try {
+        await navigator.clipboard.writeText(window.location.href);
+        setInfoStatus('Link copied.');
+    } catch (error) {
+        console.error(error);
+        setInfoStatus('Unable to copy link.');
+    }
+}
+
+function onKeyDown(event) {
+    if (!state.mesh) return;
+
+    switch (event.key.toLowerCase()) {
+        case 'g':
+            if (state.transformControls) {
+                activateTransformMode('translate', document.getElementById('btn-move'));
+            }
+            break;
+        case 'r':
+            if (state.transformControls) {
+                activateTransformMode('rotate', document.getElementById('btn-rotate'));
+            }
+            break;
+        case 's':
+            if (state.transformControls) {
+                activateTransformMode('scale', document.getElementById('btn-scale'));
+            }
+            break;
+        case '1':
+            setViewPreset('front');
+            break;
+        case '2':
+            setViewPreset('left');
+            break;
+        case '3':
+            setViewPreset('top');
+            break;
+        case '4':
+            setViewPreset('iso');
+            break;
+        case 'm':
+            setMaterialPreset('matte');
+            break;
+        case 'p':
+            setMaterialPreset('plastic');
+            break;
+        case 'w':
+            setMaterialPreset('wireframe');
+            break;
+        case 'escape':
+            clearActiveButtons();
+            state.activeTransformMode = null;
+
+            if (state.transformControls) {
+                state.transformControls.detach();
+                state.transformControls.enabled = false;
+                state.transformControls.visible = false;
+            }
+            break;
+    }
 }

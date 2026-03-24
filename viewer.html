@@ -1,26 +1,831 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <title>Shelly 3D Vault Viewer</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="styles.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
-        }
-      }
-    </script>
-  </head>
-  <body>
-    <nav>
-      <h1>Shelly 3D Vault</h1>
-      <button id="return-button" class="return-button">Return to Landing Page</button>
-      <button id="gui-toggle" class="gui-toggle">Menu</button>
-    </nav>
+<head>
+    <title>Shelly 3D Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
 
-    <script type="module" src="js/ui.js"></script>
-  </body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <button
+        id="return-button"
+        class="floating-back-button"
+        type="button"
+        onclick="window.location.href='index.html'">
+        Back
+    </button>
+
+    <div class="ui-panel ui-surface ui-surface--primary ui-viewer-info">
+        <div class="ui-stack">
+            <h2 class="ui-title">Model Info</h2>
+
+            <div class="ui-info-grid">
+                <div class="ui-label">Model</div>
+                <div class="ui-text-strong" id="info-model-set">-</div>
+
+                <div class="ui-label">Variant</div>
+                <div class="ui-text-strong" id="info-variant">-</div>
+
+                <div class="ui-label">Material</div>
+                <div class="ui-text-strong" id="info-material">-</div>
+
+                <div class="ui-label">File</div>
+                <div class="ui-text-strong" id="info-file">-</div>
+            </div>
+
+            <div class="ui-row">
+                <button class="ui-action-btn" id="btn-download-current" type="button">Download</button>
+                <button class="ui-action-btn" id="btn-copy-link" type="button">Copy link</button>
+            </div>
+
+            <div class="ui-text-muted" id="viewer-info-status"></div>
+        </div>
+    </div>
+
+    <div class="ui-viewer-sidebar">
+        <div class="ui-toolbar ui-surface ui-surface--tertiary">
+            <button class="ui-icon-btn" id="btn-recenter" type="button" data-tooltip="Re-center" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-rotate" type="button" data-tooltip="Rotate gizmo" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="ui-toolbar ui-surface ui-surface--primary">
+            <button class="ui-icon-btn" id="btn-view-front" type="button" data-view-preset="front" data-tooltip="Front view" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="6" y="5" width="12" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M6 9h12" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-view-top" type="button" data-view-preset="top" data-tooltip="Top view" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="5" y="7" width="14" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M9 7l3-2l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-view-side" type="button" data-view-preset="left" data-tooltip="Side view" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5l8 3v11l-8-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M8 5v11" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn is-active" id="btn-view-iso" type="button" data-view-preset="iso" data-tooltip="Isometric view" aria-pressed="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 4l7 4v8l-7 4l-7-4V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M12 4v8m0 0l7-4m-7 4l-7-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="ui-toolbar ui-surface ui-surface--secondary">
+            <button class="ui-icon-btn is-active" id="btn-material-matte" type="button" data-material-preset="matte" data-tooltip="Matte" aria-pressed="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-material-plastic" type="button" data-material-preset="plastic" data-tooltip="Plastic" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M9 9c1-1 2-1.5 3-1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-material-metal" type="button" data-material-preset="metal" data-tooltip="Metal" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M9 9.2c1.2-1.2 2.6-1.8 4.4-1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M8.4 12.2c.9-.7 1.9-1.1 3-1.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                </svg>
+            </button>
+
+            <button class="ui-icon-btn" id="btn-material-wireframe" type="button" data-material-preset="wireframe" data-tooltip="Wireframe" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 4l7 4v8l-7 4l-7-4V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M5 8l7 4l7-4M12 12v8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="ui-panel ui-surface ui-surface--primary ui-viewer-dock">
+        <label for="variant-select" class="variant-label">Shelly Models</label>
+        <div class="variant-select-wrap">
+            <select id="variant-select" class="variant-select"></select>
+        </div>
+    </div>
+
+    <div id="viewer-loading" class="viewer-overlay is-hidden" aria-live="polite">
+        <div class="viewer-overlay-card">
+            <div class="viewer-spinner"></div>
+            <h2 class="viewer-overlay-title">Loading model</h2>
+            <p class="viewer-overlay-text" id="viewer-loading-text">Preparing 3D preview...</p>
+        </div>
+    </div>
+
+    <div id="viewer-error" class="viewer-error is-hidden" role="alert">
+        <h2 class="viewer-error-title">Unable to load model</h2>
+        <p class="viewer-error-text" id="viewer-error-text">
+            The selected 3D file could not be loaded.
+        </p>
+        <div class="viewer-error-actions">
+            <button class="viewer-error-btn" id="viewer-error-retry" type="button">Retry</button>
+            <button class="viewer-error-btn" type="button" onclick="window.location.href='index.html'">Back to catalog</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { MODEL_LIBRARY, MODEL_VARIANTS, MODEL_DEFAULTS } from './models.js';
+
+        const DEFAULT_MODEL_SET = MODEL_LIBRARY[0].modelSet;
+        const DEFAULT_SCALE = 0.05;
+
+        const MATERIAL_PRESETS = {
+            matte: {
+                color: 0xb8b8b8,
+                roughness: 0.95,
+                metalness: 0.02,
+                wireframe: false
+            },
+            plastic: {
+                color: 0xc9c9c9,
+                roughness: 0.62,
+                metalness: 0.08,
+                wireframe: false
+            },
+            metal: {
+                color: 0xbfc5cc,
+                roughness: 0.28,
+                metalness: 0.82,
+                wireframe: false
+            },
+            wireframe: {
+                color: 0xd5d5d5,
+                roughness: 0.8,
+                metalness: 0.05,
+                wireframe: true
+            }
+        };
+
+        function getViewerDefaults(modelSet) {
+            return MODEL_DEFAULTS?.[modelSet] || {
+                scale: DEFAULT_SCALE,
+                rotation: { x: -90, y: 0, z: 0 },
+                preferredView: 'iso',
+                materialPreset: 'matte'
+            };
+        }
+
+        function capitalize(value) {
+            if (!value || typeof value !== 'string') return value;
+            return value.charAt(0).toUpperCase() + value.slice(1);
+        }
+
+        function getFileName(path) {
+            if (!path) return '-';
+            return path.split('/').pop() || path;
+        }
+
+        const state = {
+            scene: null,
+            camera: null,
+            renderer: null,
+            controls: null,
+            transformControls: null,
+            mesh: null,
+            material: null,
+            grid: null,
+            currentModelSet: DEFAULT_MODEL_SET,
+            currentVariant: Object.keys(MODEL_VARIANTS[DEFAULT_MODEL_SET])[0],
+            currentModelUrl: null,
+            isLoading: false,
+            currentViewPreset: 'iso',
+            currentMaterialPreset: 'matte',
+            rotateGizmoActive: false
+        };
+
+        const stlLoader = new STLLoader();
+
+        init();
+
+        function init() {
+            const route = getRouteState();
+
+            state.currentModelSet = route.modelSet;
+            state.currentVariant = route.variant;
+            state.currentModelUrl = route.modelUrl;
+
+            applyModelDefaults(state.currentModelSet);
+
+            setupScene();
+            setupRenderer();
+            setupControls();
+            setupTransformControls();
+            setupTransformPanel();
+            setupViewPresetPanel();
+            setupMaterialPanel();
+            setupVariantSelector();
+            setupErrorActions();
+            setupInfoPanelActions();
+            updateInfoPanel();
+
+            loadModel(route.modelUrl);
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+        }
+
+        function getRouteState() {
+            const params = new URLSearchParams(window.location.search);
+            const requestedModelSet = decodeURIComponent(params.get('modelSet') || DEFAULT_MODEL_SET);
+
+            if (!MODEL_VARIANTS[requestedModelSet]) {
+                const fallbackSet = DEFAULT_MODEL_SET;
+                const fallbackVariant = Object.keys(MODEL_VARIANTS[fallbackSet])[0];
+
+                return {
+                    modelSet: fallbackSet,
+                    variant: fallbackVariant,
+                    modelUrl: MODEL_VARIANTS[fallbackSet][fallbackVariant]
+                };
+            }
+
+            const variants = Object.keys(MODEL_VARIANTS[requestedModelSet]);
+            const requestedVariant = decodeURIComponent(params.get('variant') || variants[0]);
+            const safeVariant = variants.includes(requestedVariant) ? requestedVariant : variants[0];
+
+            const requestedModel = params.get('model');
+            const safeModelUrl = requestedModel
+                ? decodeURIComponent(requestedModel)
+                : MODEL_VARIANTS[requestedModelSet][safeVariant];
+
+            return {
+                modelSet: requestedModelSet,
+                variant: safeVariant,
+                modelUrl: safeModelUrl
+            };
+        }
+
+        function applyModelDefaults(modelSet) {
+            const defaults = getViewerDefaults(modelSet);
+            state.currentViewPreset = defaults.preferredView || 'iso';
+            state.currentMaterialPreset = defaults.materialPreset || 'matte';
+        }
+
+        function setupScene() {
+            state.camera = new THREE.PerspectiveCamera(
+                70,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000
+            );
+            state.camera.position.set(4, 2, 4);
+
+            state.scene = new THREE.Scene();
+            state.scene.background = new THREE.Color(0x0f1318);
+            state.scene.fog = new THREE.Fog(0x0f1318, 8, 30);
+
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x223344, 2.8);
+            hemiLight.position.set(0, 20, 0);
+            state.scene.add(hemiLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 2.4);
+            directionalLight.position.set(8, 18, 10);
+            directionalLight.castShadow = true;
+            state.scene.add(directionalLight);
+
+            const fillLight = new THREE.DirectionalLight(0x88aaff, 0.7);
+            fillLight.position.set(-8, 8, -6);
+            state.scene.add(fillLight);
+
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(500, 500),
+                new THREE.ShadowMaterial({ opacity: 0.18 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.001;
+            ground.receiveShadow = true;
+            state.scene.add(ground);
+
+            state.grid = new THREE.GridHelper(120, 120, 0x6e7b86, 0x34414b);
+            state.grid.material.opacity = 0.52;
+            state.grid.material.transparent = true;
+            state.scene.add(state.grid);
+        }
+
+        function setupRenderer() {
+            state.renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: false
+            });
+
+            state.renderer.setPixelRatio(window.devicePixelRatio);
+            state.renderer.setSize(window.innerWidth, window.innerHeight);
+            state.renderer.shadowMap.enabled = true;
+            state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            state.renderer.setAnimationLoop(render);
+
+            document.body.appendChild(state.renderer.domElement);
+        }
+
+        function setupControls() {
+            state.controls = new OrbitControls(state.camera, state.renderer.domElement);
+            state.controls.enableDamping = true;
+            state.controls.dampingFactor = 0.06;
+            state.controls.target.set(0, 0.5, 0);
+            state.controls.minDistance = 0.5;
+            state.controls.maxDistance = 50;
+            state.controls.update();
+        }
+
+        function setupTransformControls() {
+            state.transformControls = new TransformControls(
+                state.camera,
+                state.renderer.domElement
+            );
+
+            state.transformControls.setMode('rotate');
+            state.transformControls.enabled = false;
+            state.transformControls.visible = false;
+            state.transformControls.setSize(0.9);
+            state.transformControls.showX = true;
+            state.transformControls.showY = true;
+            state.transformControls.showZ = true;
+
+            state.transformControls.addEventListener('dragging-changed', (event) => {
+                state.controls.enabled = !event.value;
+            });
+
+            const helper = state.transformControls.getHelper();
+            helper.renderOrder = 999;
+            state.scene.add(helper);
+        }
+
+        function setupTransformPanel() {
+            const rotateBtn = document.getElementById('btn-rotate');
+
+            document.getElementById('btn-recenter').addEventListener('click', () => {
+                if (!state.mesh) return;
+
+                resetModelTransform(state.mesh);
+                applyMaterialPreset(state.currentMaterialPreset);
+                setViewPreset(state.currentViewPreset);
+                deactivateRotateGizmo();
+                updateInfoPanel();
+                setInfoStatus('Model re-centered.');
+            });
+
+            rotateBtn.addEventListener('click', () => {
+                if (!state.mesh) return;
+
+                if (state.rotateGizmoActive) {
+                    deactivateRotateGizmo();
+                    setInfoStatus('Rotate gizmo hidden.');
+                } else {
+                    activateRotateGizmo();
+                    setInfoStatus('Rotate gizmo active.');
+                }
+            });
+        }
+
+        function setupViewPresetPanel() {
+            document.querySelectorAll('[data-view-preset]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    setViewPreset(button.dataset.viewPreset);
+                });
+            });
+        }
+
+        function setupMaterialPanel() {
+            document.querySelectorAll('[data-material-preset]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    setMaterialPreset(button.dataset.materialPreset);
+                });
+            });
+        }
+
+        function setupVariantSelector() {
+            const select = document.getElementById('variant-select');
+            const variants = Object.keys(MODEL_VARIANTS[state.currentModelSet]);
+
+            select.innerHTML = '';
+
+            variants.forEach((variantName) => {
+                const option = document.createElement('option');
+                option.value = variantName;
+                option.textContent = variantName;
+                select.appendChild(option);
+            });
+
+            if (!variants.includes(state.currentVariant)) {
+                state.currentVariant = variants[0];
+            }
+
+            select.value = state.currentVariant;
+
+            select.addEventListener('change', (event) => {
+                state.currentVariant = event.target.value;
+                const modelUrl = MODEL_VARIANTS[state.currentModelSet][state.currentVariant];
+                state.currentModelUrl = modelUrl;
+
+                applyModelDefaults(state.currentModelSet);
+                updateInfoPanel();
+                loadModel(modelUrl);
+                updateViewerUrl();
+            });
+        }
+
+        function setupErrorActions() {
+            document.getElementById('viewer-error-retry').addEventListener('click', () => {
+                hideError();
+
+                if (state.currentModelUrl) {
+                    loadModel(state.currentModelUrl);
+                }
+            });
+        }
+
+        function setupInfoPanelActions() {
+            document.getElementById('btn-download-current').addEventListener('click', downloadCurrentModel);
+            document.getElementById('btn-copy-link').addEventListener('click', copyCurrentLink);
+        }
+
+        function showLoading(message = 'Preparing 3D preview...') {
+            state.isLoading = true;
+            document.getElementById('viewer-loading-text').textContent = message;
+            document.getElementById('viewer-loading').classList.remove('is-hidden');
+        }
+
+        function hideLoading() {
+            state.isLoading = false;
+            document.getElementById('viewer-loading').classList.add('is-hidden');
+        }
+
+        function showError(message = 'The selected 3D file could not be loaded.') {
+            hideLoading();
+            document.getElementById('viewer-error-text').textContent = message;
+            document.getElementById('viewer-error').classList.remove('is-hidden');
+            setInfoStatus('Load failed.');
+        }
+
+        function hideError() {
+            document.getElementById('viewer-error').classList.add('is-hidden');
+        }
+
+        function markActiveViewPreset(preset) {
+            document.querySelectorAll('[data-view-preset]').forEach((btn) => {
+                btn.classList.remove('is-active');
+                btn.setAttribute('aria-pressed', 'false');
+            });
+
+            const active = document.querySelector(`[data-view-preset="${preset}"]`);
+            if (active) {
+                active.classList.add('is-active');
+                active.setAttribute('aria-pressed', 'true');
+            }
+        }
+
+        function markActiveMaterialPreset(preset) {
+            document.querySelectorAll('[data-material-preset]').forEach((btn) => {
+                btn.classList.remove('is-active');
+                btn.setAttribute('aria-pressed', 'false');
+            });
+
+            const active = document.querySelector(`[data-material-preset="${preset}"]`);
+            if (active) {
+                active.classList.add('is-active');
+                active.setAttribute('aria-pressed', 'true');
+            }
+        }
+
+        function updateInfoPanel() {
+            document.getElementById('info-model-set').textContent = state.currentModelSet || '-';
+            document.getElementById('info-variant').textContent = state.currentVariant || '-';
+            document.getElementById('info-material').textContent = capitalize(state.currentMaterialPreset || '-');
+            document.getElementById('info-file').textContent = getFileName(state.currentModelUrl || '');
+        }
+
+        function setInfoStatus(message) {
+            document.getElementById('viewer-info-status').textContent = message;
+        }
+
+        function createMaterialFromPreset(presetName) {
+            const preset = MATERIAL_PRESETS[presetName] || MATERIAL_PRESETS.matte;
+
+            return new THREE.MeshStandardMaterial({
+                color: preset.color,
+                roughness: preset.roughness,
+                metalness: preset.metalness,
+                wireframe: preset.wireframe
+            });
+        }
+
+        function applyMaterialPreset(presetName) {
+            if (!state.mesh) return;
+
+            const newMaterial = createMaterialFromPreset(presetName);
+
+            if (state.material) {
+                state.material.dispose();
+            }
+
+            state.material = newMaterial;
+            state.mesh.material = newMaterial;
+        }
+
+        function setMaterialPreset(presetName) {
+            state.currentMaterialPreset = presetName;
+            applyMaterialPreset(presetName);
+            markActiveMaterialPreset(presetName);
+            updateInfoPanel();
+            setInfoStatus(`Material set to ${capitalize(presetName)}.`);
+        }
+
+        function resetModelTransform(mesh) {
+            const defaults = getViewerDefaults(state.currentModelSet);
+            const rotation = defaults.rotation || { x: -90, y: 0, z: 0 };
+            const scale = defaults.scale ?? DEFAULT_SCALE;
+
+            mesh.position.set(0, 0, 0);
+            mesh.rotation.set(
+                THREE.MathUtils.degToRad(rotation.x ?? -90),
+                THREE.MathUtils.degToRad(rotation.y ?? 0),
+                THREE.MathUtils.degToRad(rotation.z ?? 0)
+            );
+            mesh.scale.set(scale, scale, scale);
+        }
+
+        function removeCurrentMesh() {
+            if (!state.mesh) return;
+
+            if (state.transformControls) {
+                state.transformControls.detach();
+                state.transformControls.enabled = false;
+                state.transformControls.visible = false;
+            }
+
+            state.scene.remove(state.mesh);
+            state.mesh.geometry.dispose();
+
+            if (state.material) {
+                state.material.dispose();
+            }
+
+            state.mesh = null;
+            state.material = null;
+        }
+
+        function loadModel(modelUrl) {
+            state.currentModelUrl = modelUrl;
+            hideError();
+            showLoading('Loading 3D model...');
+            setInfoStatus('Loading current model...');
+
+            removeCurrentMesh();
+
+            stlLoader.load(
+                modelUrl,
+                (geometry) => {
+                    geometry.computeVertexNormals();
+                    geometry.computeBoundingBox();
+
+                    const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+                    geometry.translate(-center.x, -center.y, -center.z);
+
+                    geometry.computeBoundingBox();
+                    geometry.computeBoundingSphere();
+
+                    state.mesh = new THREE.Mesh(
+                        geometry,
+                        createMaterialFromPreset(state.currentMaterialPreset)
+                    );
+
+                    state.material = state.mesh.material;
+                    resetModelTransform(state.mesh);
+                    state.mesh.castShadow = true;
+                    state.mesh.receiveShadow = true;
+
+                    state.scene.add(state.mesh);
+                    setViewPreset(state.currentViewPreset, false);
+                    markActiveMaterialPreset(state.currentMaterialPreset);
+                    updateInfoPanel();
+
+                    if (state.rotateGizmoActive && state.transformControls) {
+                        state.transformControls.attach(state.mesh);
+                        state.transformControls.enabled = true;
+                        state.transformControls.visible = true;
+                    }
+
+                    hideLoading();
+                    setInfoStatus('Model loaded.');
+                },
+                undefined,
+                (error) => {
+                    console.error('Failed to load STL model:', modelUrl, error);
+                    showError(`The model file could not be loaded: ${modelUrl}`);
+                }
+            );
+        }
+
+        function setViewPreset(preset, updateState = true) {
+            if (!state.mesh) return;
+
+            const boundingBox = new THREE.Box3().setFromObject(state.mesh);
+            const size = boundingBox.getSize(new THREE.Vector3());
+            const center = boundingBox.getCenter(new THREE.Vector3());
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = THREE.MathUtils.degToRad(state.camera.fov);
+            const distance = Math.max(maxDim / (2 * Math.tan(fov / 2)), 2);
+
+            switch (preset) {
+                case 'front':
+                    state.camera.position.set(center.x, center.y, center.z + distance * 1.8);
+                    break;
+                case 'top':
+                    state.camera.position.set(center.x, center.y + distance * 1.8, center.z);
+                    break;
+                case 'left':
+                    state.camera.position.set(center.x - distance * 1.8, center.y, center.z);
+                    break;
+                case 'iso':
+                default:
+                    state.camera.position.set(
+                        center.x,
+                        center.y + distance * 0.55,
+                        center.z + distance * 1.55
+                    );
+                    preset = 'iso';
+                    break;
+            }
+
+            state.camera.lookAt(center);
+            state.controls.target.copy(center);
+            state.controls.update();
+
+            if (updateState) {
+                state.currentViewPreset = preset;
+            }
+
+            markActiveViewPreset(preset);
+        }
+
+        function updateViewerUrl() {
+            const modelUrl = MODEL_VARIANTS[state.currentModelSet][state.currentVariant];
+            const params = new URLSearchParams(window.location.search);
+
+            params.set('modelSet', state.currentModelSet);
+            params.set('variant', state.currentVariant);
+            params.set('model', modelUrl);
+
+            const newUrl = `${window.location.pathname}?${params.toString()}`;
+            window.history.replaceState({}, '', newUrl);
+        }
+
+        async function downloadCurrentModel() {
+            if (!state.currentModelUrl) return;
+
+            try {
+                setInfoStatus('Downloading current file...');
+
+                const response = await fetch(state.currentModelUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${state.currentModelUrl}`);
+                }
+
+                const blob = await response.blob();
+                const fileName = getFileName(state.currentModelUrl) || 'model.stl';
+                const objectUrl = URL.createObjectURL(blob);
+
+                const link = document.createElement('a');
+                link.href = objectUrl;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+
+                URL.revokeObjectURL(objectUrl);
+                setInfoStatus('Download started.');
+            } catch (error) {
+                console.error(error);
+                setInfoStatus('Download failed.');
+            }
+        }
+
+        async function copyCurrentLink() {
+            try {
+                await navigator.clipboard.writeText(window.location.href);
+                setInfoStatus('Link copied.');
+            } catch (error) {
+                console.error(error);
+                setInfoStatus('Unable to copy link.');
+            }
+        }
+
+        function onKeyDown(event) {
+            if (!state.mesh) return;
+
+            switch (event.key.toLowerCase()) {
+                case 'r':
+                    if (state.rotateGizmoActive) {
+                        deactivateRotateGizmo();
+                        setInfoStatus('Rotate gizmo hidden.');
+                    } else {
+                        activateRotateGizmo();
+                        setInfoStatus('Rotate gizmo active.');
+                    }
+                    break;
+                case '1':
+                    setViewPreset('front');
+                    break;
+                case '2':
+                    setViewPreset('left');
+                    break;
+                case '3':
+                    setViewPreset('top');
+                    break;
+                case '4':
+                    setViewPreset('iso');
+                    break;
+                case 'm':
+                    setMaterialPreset('matte');
+                    break;
+                case 'p':
+                    setMaterialPreset('plastic');
+                    break;
+                case 'w':
+                    setMaterialPreset('wireframe');
+                    break;
+                case 'escape':
+                    deactivateRotateGizmo();
+                    setInfoStatus('Rotate gizmo hidden.');
+                    break;
+            }
+        }
+
+        function onWindowResize() {
+            state.camera.aspect = window.innerWidth / window.innerHeight;
+            state.camera.updateProjectionMatrix();
+            state.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function render() {
+            state.controls.update();
+            state.renderer.render(state.scene, state.camera);
+        }
+
+        function activateRotateGizmo() {
+            if (!state.mesh || !state.transformControls) return;
+
+            state.rotateGizmoActive = true;
+            state.transformControls.attach(state.mesh);
+            state.transformControls.setMode('rotate');
+            state.transformControls.enabled = true;
+            state.transformControls.visible = true;
+            state.transformControls.showX = true;
+            state.transformControls.showY = true;
+            state.transformControls.showZ = true;
+
+            const btn = document.getElementById('btn-rotate');
+            btn.classList.add('is-active');
+            btn.setAttribute('aria-pressed', 'true');
+        }
+
+        function deactivateRotateGizmo() {
+            if (!state.transformControls) return;
+
+            state.rotateGizmoActive = false;
+            state.transformControls.detach();
+            state.transformControls.enabled = false;
+            state.transformControls.visible = false;
+
+            const btn = document.getElementById('btn-rotate');
+            btn.classList.remove('is-active');
+            btn.setAttribute('aria-pressed', 'false');
+        }
+    </script>
+</body>
 </html>

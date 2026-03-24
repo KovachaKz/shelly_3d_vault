@@ -1,22 +1,447 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="styles.css" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelly 3D Vault</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-  </head>
-  <body class="landing-page">
-    <header>
-      <h1>Shelly 3D Vault</h1>
-    </header>
 
-    <main>
-      <div id="model-list" class="model-list"></div>
-    </main>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body class="landing-page">
+    <div class="page-shell">
+        <header class="site-header glass-panel">
+            <div class="site-header__content">
+                <div>
+                    <p class="site-eyebrow">Interactive model library</p>
+                    <h1 class="site-title">Shelly 3D Vault</h1>
+                    <p class="site-subtitle">
+                        Preview Shelly-related STL models, open them in the full viewer, or download complete packs.
+                    </p>
+                </div>
+            </div>
+        </header>
 
-    <script type="module" src="js/app.js"></script>
-  </body>
+        <main class="content-wrap">
+            <section class="hero-panel glass-panel">
+                <div class="hero-copy">
+                    <p class="section-label">Model Collection</p>
+                    <h2>Browse available 3D printable parts</h2>
+                    <p>
+                        Each card includes a rotating preview, quick access to the full viewer, and ZIP download for the related STL files.
+                    </p>
+                </div>
+            </section>
+
+            <section class="model-grid" id="model-grid"></section>
+
+            <section class="hero-panel glass-panel hero-panel--secondary">
+                <div class="hero-copy">
+                    <p class="section-label">Search by device</p>
+                    <h2>Browse device previews</h2>
+                    <p>
+                        This section shows interactive GLB device previews only. The current viewer remains STL-only, so these cards do not open in viewer.html.
+                    </p>
+                </div>
+            </section>
+
+            <section class="model-grid" id="device-grid"></section>
+        </main>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { MODEL_LIBRARY } from './models.js';
+
+        const DEVICE_LIBRARY = [
+            {
+                title: 'Shelly Pro 1PM',
+                description: 'Interactive GLB preview of Shelly Pro 1PM.',
+                preview: './pro1pm.glb',
+                category: 'DIN rail relay'
+            },
+            {
+                title: 'Shelly 1',
+                description: 'Interactive GLB preview of Shelly 1.',
+                preview: './shelly1.glb',
+                category: 'Wi-Fi relay'
+            },
+            {
+                title: 'Shelly 2',
+                description: 'Interactive GLB preview of Shelly 2.',
+                preview: './shelly2.glb',
+                category: 'Dual channel relay'
+            }
+        ];
+
+        const previewEntries = [];
+        const stlLoader = new STLLoader();
+        const gltfLoader = new GLTFLoader();
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderModelCards();
+            renderDeviceCards();
+            startPreviewLoop();
+            window.addEventListener('resize', handleResize);
+        });
+
+        function renderModelCards() {
+            const grid = document.getElementById('model-grid');
+            grid.innerHTML = '';
+
+            MODEL_LIBRARY.forEach((item, index) => {
+                const variantValues = Object.values(item.variants);
+                const defaultModel = variantValues[0];
+
+                const card = document.createElement('article');
+                card.className = 'model-card glass-panel';
+
+                card.innerHTML = `
+                    <div class="model-preview-shell">
+                        <div
+                            class="model-preview model-loader"
+                            data-model="${item.preview}"
+                            data-preview-id="stl-${index}"
+                            data-file-type="stl">
+                            <canvas></canvas>
+                            <div class="preview-badge">3D Preview</div>
+                        </div>
+                    </div>
+
+                    <div class="model-card__content">
+                        <div class="model-card__text">
+                            <p class="model-card__eyebrow">Shelly model</p>
+                            <h3>${item.title}</h3>
+                            <p>${item.description}</p>
+                        </div>
+
+                        <div class="model-card__actions">
+                            <button
+                                class="ui-badge"
+                                type="button"
+                                data-action="view"
+                                data-model="${defaultModel}"
+                                data-model-set="${item.modelSet}">
+                                Open Viewer
+                            </button>
+
+                            <button
+                                class="action-button action-button--secondary"
+                                type="button"
+                                data-action="download"
+                                data-files='${escapeAttribute(JSON.stringify(variantValues))}'
+                                data-title="${escapeAttribute(item.title)}">
+                                Download STL Pack
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+
+            bindModelCardActions();
+            initModelPreviews(grid);
+        }
+
+        function renderDeviceCards() {
+            const grid = document.getElementById('device-grid');
+            grid.innerHTML = '';
+
+            DEVICE_LIBRARY.forEach((item, index) => {
+                const card = document.createElement('article');
+                card.className = 'model-card glass-panel';
+
+                card.innerHTML = `
+                    <div class="model-preview-shell">
+                        <div
+                            class="model-preview model-loader"
+                            data-model="${item.preview}"
+                            data-preview-id="glb-${index}"
+                            data-file-type="glb">
+                            <canvas></canvas>
+                            <div class="preview-badge">GLB Preview</div>
+                        </div>
+                    </div>
+
+                    <div class="model-card__content">
+                        <div class="model-card__text">
+                            <p class="model-card__eyebrow">${item.category}</p>
+                            <h3>${item.title}</h3>
+                            <p>${item.description}</p>
+                        </div>
+
+                        <div class="model-card__actions">
+                            <button
+                                class="action-button action-button--secondary"
+                                type="button"
+                                disabled
+                                title="The current viewer is STL-only.">
+                                STL Viewer Only
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+
+            initModelPreviews(grid);
+        }
+
+        function bindModelCardActions() {
+            document.querySelectorAll('[data-action="view"]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const model = button.dataset.model;
+                    const modelSet = button.dataset.modelSet;
+                    openViewer(model, modelSet);
+                });
+            });
+
+            document.querySelectorAll('[data-action="download"]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const files = JSON.parse(button.dataset.files);
+                    const title = button.dataset.title;
+                    await downloadFiles(files, title);
+                });
+            });
+        }
+
+        function initModelPreviews(scope = document) {
+            const previewElements = scope.querySelectorAll('.model-loader');
+
+            previewElements.forEach((previewElement) => {
+                const modelUrl = previewElement.dataset.model;
+                const fileType = previewElement.dataset.fileType || 'stl';
+                const canvas = previewElement.querySelector('canvas');
+                createModelPreview(previewElement, canvas, modelUrl, fileType);
+            });
+        }
+
+        function createModelPreview(container, canvas, modelUrl, fileType = 'stl') {
+            const scene = new THREE.Scene();
+            scene.background = null;
+
+            const width = container.clientWidth || 320;
+            const height = container.clientHeight || 320;
+
+            const camera = new THREE.PerspectiveCamera(70, width / height, 0.1, 1000);
+
+            const renderer = new THREE.WebGLRenderer({
+                canvas,
+                antialias: true,
+                alpha: true
+            });
+
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(width, height, false);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x223344, 2.8);
+            hemiLight.position.set(0, 20, 0);
+            scene.add(hemiLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 2.4);
+            directionalLight.position.set(8, 18, 10);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            const fillLight = new THREE.DirectionalLight(0x88aaff, 0.7);
+            fillLight.position.set(-8, 8, -6);
+            scene.add(fillLight);
+
+            const finalizePreview = (object3D) => {
+                object3D.traverse?.((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                if (object3D.isMesh) {
+                    object3D.castShadow = true;
+                    object3D.receiveShadow = true;
+                }
+
+                scene.add(object3D);
+                frameModelLikeViewer(camera, object3D);
+
+                const entry = {
+                    renderer,
+                    scene,
+                    camera,
+                    model: object3D,
+                    canvas,
+                    container,
+                    paused: false,
+                    rotationAxis: fileType === 'glb' ? 'y' : 'z',
+                    baseRotationY: object3D.rotation.y,
+                    baseRotationZ: object3D.rotation.z
+                };
+
+                container.addEventListener('mouseenter', () => {
+                    entry.paused = true;
+                });
+
+                container.addEventListener('mouseleave', () => {
+                    entry.paused = false;
+                });
+
+                previewEntries.push(entry);
+            };
+
+            if (fileType === 'glb') {
+                gltfLoader.load(
+                    modelUrl,
+                    (gltf) => {
+                        const root = gltf.scene;
+                        root.rotation.set(0, 0, 0);
+                        root.scale.set(1, 1, 1);
+                        finalizePreview(root);
+                    },
+                    undefined,
+                    (error) => {
+                        console.error('GLB preview load failed:', modelUrl, error);
+                    }
+                );
+
+                return;
+            }
+
+            stlLoader.load(
+                modelUrl,
+                (geometry) => {
+                    geometry.computeVertexNormals();
+
+                    const material = new THREE.MeshStandardMaterial({
+                        color: 0xb8b8b8,
+                        roughness: 0.62,
+                        metalness: 0.08
+                    });
+
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.scale.set(0.05, 0.05, 0.05);
+                    mesh.rotation.x = -Math.PI / 2;
+                    mesh.rotation.y = 0;
+                    mesh.rotation.z = 0;
+
+                    finalizePreview(mesh);
+                },
+                undefined,
+                (error) => {
+                    console.error('STL preview load failed:', modelUrl, error);
+                }
+            );
+        }
+
+        function frameModelLikeViewer(camera, object3D) {
+            const boundingBox = new THREE.Box3().setFromObject(object3D);
+            const size = boundingBox.getSize(new THREE.Vector3());
+            const center = boundingBox.getCenter(new THREE.Vector3());
+
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const fov = THREE.MathUtils.degToRad(camera.fov);
+            const cameraDistance = Math.max(maxDim / (2 * Math.tan(fov / 2)), 2);
+
+            camera.position.set(
+                center.x,
+                center.y + cameraDistance * 0.55,
+                center.z + cameraDistance * 1.55
+            );
+
+            camera.near = Math.max(cameraDistance / 100, 0.01);
+            camera.far = cameraDistance * 20;
+            camera.updateProjectionMatrix();
+            camera.lookAt(center);
+        }
+
+        function startPreviewLoop() {
+            function animate(time) {
+                requestAnimationFrame(animate);
+
+                const t = time * 0.00035;
+
+                previewEntries.forEach((entry) => {
+                    if (entry.model && !entry.paused) {
+                        if (entry.rotationAxis === 'y') {
+                            entry.model.rotation.y = entry.baseRotationY + t;
+                        } else {
+                            entry.model.rotation.z = entry.baseRotationZ + t;
+                        }
+                    }
+
+                    entry.renderer.render(entry.scene, entry.camera);
+                });
+            }
+
+            animate(0);
+        }
+
+        function handleResize() {
+            previewEntries.forEach((entry) => {
+                const width = entry.container.clientWidth || 320;
+                const height = entry.container.clientHeight || 320;
+
+                entry.camera.aspect = width / height;
+                entry.camera.updateProjectionMatrix();
+                entry.renderer.setSize(width, height, false);
+            });
+        }
+
+        function openViewer(url, modelSet) {
+            const safeUrl = encodeURIComponent(url);
+            const safeModelSet = encodeURIComponent(modelSet);
+            window.location.href = `viewer.html?model=${safeUrl}&modelSet=${safeModelSet}`;
+        }
+
+        async function downloadFiles(urls, title = 'models') {
+            const zip = new JSZip();
+            const folderName = sanitizeFileName(title || 'models');
+            const folder = zip.folder(folderName);
+
+            for (const url of urls) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${url}`);
+                }
+
+                const blob = await response.blob();
+                const fileName = url.split('/').pop();
+                folder.file(fileName, blob);
+            }
+
+            const content = await zip.generateAsync({ type: 'blob' });
+            saveAs(content, `${folderName}.zip`);
+        }
+
+        function sanitizeFileName(value) {
+            return value
+                .trim()
+                .replace(/[\\/:*?"<>|]+/g, '')
+                .replace(/\s+/g, '_');
+        }
+
+        function escapeAttribute(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+    </script>
+</body>
 </html>
