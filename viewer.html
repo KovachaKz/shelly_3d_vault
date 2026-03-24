@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Shelly 3D Vault Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <nav>
+      <h1>Shelly 3D Vault</h1>
+      <button id="return-button" class="return-button">Return to Landing Page</button>
+      <button id="gui-toggle" class="gui-toggle">Menu</button>
+    </nav>
+
+    <script type="module" src="js/ui.js"></script>
+  </body>
+</html>
